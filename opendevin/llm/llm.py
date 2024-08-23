@@ -86,7 +86,7 @@ class LLM:
             else:
                 # Max input tokens for gpt3.5, so this is a safe fallback for any potentially viable model
                 self.config.max_input_tokens = 4096
-
+        self.config.max_input_tokens = 8000
         if self.config.max_output_tokens is None:
             if (
                 self.model_info is not None
