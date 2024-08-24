@@ -195,6 +195,11 @@ class CodeActAgent(Agent):
             ),
         ]
 
+        tokens = self.llm.get_token_count(
+            [message.model_dump() for message in messages]
+        )
+
+        other_messages: list[Message] = []
         for event in state.history.get_events():
             # create a regular message from an event
             if isinstance(event, Action):
@@ -209,10 +214,23 @@ class CodeActAgent(Agent):
                 # handle error if the message is the SAME role as the previous message
                 # litellm.exceptions.BadRequestError: litellm.BadRequestError: OpenAIException - Error code: 400 - {'detail': 'Only supports u/a/u/a/u...'}
                 # there should not have two consecutive messages from the same role
-                if messages and messages[-1].role == message.role:
-                    messages[-1].content.extend(message.content)
+                if other_messages and other_messages[-1].role == message.role:
+                    other_messages[-1].content.extend(message.content)
                 else:
-                    messages.append(message)
+                    other_messages.append(message)
+
+        messages_to_add = []
+
+        for message in reversed(other_messages):
+            text_message = message.model_dump()
+            tokens += self.llm.get_token_count([text_message])
+            if tokens <= self.llm.config.max_input_tokens:
+                messages_to_add.append(message)
+            else:
+                break
+
+        messages_to_add.reverse()
+        messages.extend(messages_to_add)
 
         # the latest user message is important:
         # we want to remind the agent of the environment constraints

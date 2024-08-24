@@ -150,6 +150,8 @@ class LLM:
             else:
                 messages = args[1]
 
+            print('No of tokens =', self.get_token_count(messages))
+
             # log the prompt
             debug_message = ''
             for message in messages:
