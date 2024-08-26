@@ -4,7 +4,6 @@ import os
 import tempfile
 from typing import Any
 
-import docker
 import pandas as pd
 import toml
 from datasets import load_dataset
@@ -295,18 +294,6 @@ async def process_instance(
     metadata: EvalMetadata,
     reset_logger: bool = True,
 ) -> EvalOutput:
-    # Get list of existing images before processing
-    existing_images = set()
-    if USE_INSTANCE_IMAGE:
-        try:
-            client = docker.from_env()
-            images = client.images.list(name='ghcr.io/opendevin/od_runtime')
-            existing_images = set(image.id for image in images)
-        except Exception as e:
-            logger.error(f'Error listing existing Docker images: {str(e)}')
-        finally:
-            client.close()
-
     config = get_config(instance, metadata)
 
     # Setup the logger properly, so you can run multi-processing to parallelize the evaluation
@@ -367,49 +354,6 @@ async def process_instance(
         metrics=metrics,
         error=state.last_error if state and state.last_error else None,
     )
-
-    # Remove only the new Docker images created for this instance
-    if USE_INSTANCE_IMAGE:
-        try:
-            client = docker.from_env()
-
-            # List all images with the specific repository name
-            current_images = client.images.list(name='ghcr.io/opendevin/od_runtime')
-
-            for image in current_images:
-                if image.id not in existing_images:
-                    # This is a new image, try to remove it
-                    tags = image.tags
-                    try:
-                        # Find containers using this image
-                        containers = client.containers.list(
-                            all=True, filters={'ancestor': image.id}
-                        )
-
-                        # Remove associated containers
-                        for container in containers:
-                            container.remove(force=True)
-                            logger.info(f'Removed container: {container.id}')
-
-                        # Now try to remove the image
-                        client.images.remove(image.id, force=True)
-                        logger.info(
-                            f'Removed new Docker image: {tags} (ID: {image.id})'
-                        )
-                    except docker.errors.APIError as e:
-                        logger.error(f'Error removing image {image.id}: {str(e)}')
-                else:
-                    logger.info(
-                        f'Skipped pre-existing image: {image.tags} (ID: {image.id})'
-                    )
-
-        except docker.errors.APIError as e:
-            logger.error(f'Docker API error: {str(e)}')
-        except Exception as e:
-            logger.error(f'Unexpected error: {str(e)}')
-        finally:
-            client.close()
-
     return output
 
 
